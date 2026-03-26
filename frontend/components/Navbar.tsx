@@ -23,7 +23,7 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-lg overflow-hidden ring-1 ring-emerald-500/30">
-            <Image src="/logo.jpg" alt="SettleGuard" width={36} height={36} className="object-cover" />
+            <Image src="/casa-life-lg.webp" alt="SettleGuard" width={36} height={36} className="object-cover" />
           </div>
           <div className="flex flex-col">
             <span className="text-lg font-bold tracking-tight leading-tight">SettleGuard</span>
