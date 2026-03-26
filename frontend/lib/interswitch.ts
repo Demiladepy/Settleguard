@@ -128,6 +128,103 @@ export async function requestIswRefund(
 }
 
 /**
+ * Search transactions on Interswitch network using the Transaction Search API.
+ * Useful for reconciliation — pull transaction history by date range, status, etc.
+ */
+export interface IswTransactionSearchParams {
+  merchantCode?: string;
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string;   // YYYY-MM-DD
+  pageNumber?: number;
+  pageSize?: number;
+  transactionRef?: string;
+  paymentRef?: string;
+}
+
+export interface IswTransactionRecord {
+  transactionReference: string;
+  paymentReference: string;
+  amount: number;
+  responseCode: string;
+  responseDescription: string;
+  transactionDate: string;
+  channel: string;
+  cardNumber?: string;
+  settlementStatus?: string;
+  [key: string]: unknown;
+}
+
+export async function searchIswTransactions(
+  params: IswTransactionSearchParams = {}
+): Promise<{ transactions: IswTransactionRecord[]; totalCount: number }> {
+  const token = await getIswAccessToken();
+  const merchantCode = params.merchantCode || ISW_MERCHANT_CODE;
+
+  const queryParams = new URLSearchParams({
+    merchantcode: merchantCode,
+    ...(params.startDate && { startdate: params.startDate }),
+    ...(params.endDate && { enddate: params.endDate }),
+    ...(params.pageNumber && { pagenumber: params.pageNumber.toString() }),
+    ...(params.pageSize && { pagesize: params.pageSize.toString() }),
+    ...(params.transactionRef && { transactionreference: params.transactionRef }),
+    ...(params.paymentRef && { paymentreference: params.paymentRef }),
+  });
+
+  const url = `${ISW_BASE_URL}/collections/api/v1/transactions?${queryParams}`;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, { headers });
+
+  if (!res.ok) {
+    console.warn(`ISW Transaction Search failed: ${res.status}`);
+    return { transactions: [], totalCount: 0 };
+  }
+
+  const data = await res.json();
+  return {
+    transactions: data.transactions || data.Transactions || [],
+    totalCount: data.totalCount || data.TotalCount || 0,
+  };
+}
+
+/**
+ * Pull recent ISW transactions and sync to Supabase for reconciliation.
+ * This bridges the gap between live ISW data and our local reconciliation engine.
+ */
+export async function pullIswTransactionsForReconciliation(
+  startDate: string,
+  endDate: string
+): Promise<IswTransactionRecord[]> {
+  const allTransactions: IswTransactionRecord[] = [];
+  let page = 1;
+  const pageSize = 50;
+
+  while (true) {
+    const result = await searchIswTransactions({
+      startDate,
+      endDate,
+      pageNumber: page,
+      pageSize,
+    });
+
+    allTransactions.push(...result.transactions);
+
+    if (allTransactions.length >= result.totalCount || result.transactions.length < pageSize) {
+      break;
+    }
+    page++;
+  }
+
+  return allTransactions;
+}
+
+/**
  * Check if a transaction response code indicates success
  */
 export function isSuccessful(responseCode: string): boolean {
