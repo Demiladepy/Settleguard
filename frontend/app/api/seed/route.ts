@@ -21,7 +21,16 @@ export async function POST() {
       { invoice_number: "INV1050", customer_name: "Victoria Island Consulting", customer_email: "billing@viconsult.com", amount_kobo: 12000000, status: "overdue", due_date: "2026-03-15" },
     ];
 
-    const { error: invErr } = await supabaseAdmin.from("erp_invoices").upsert(invoices, { onConflict: "invoice_number" });
+    // Clear existing data first (safe for demo seeder)
+    await supabaseAdmin.from("disputes").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await supabaseAdmin.from("reconciliation_matches").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await supabaseAdmin.from("reconciliation_runs").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await supabaseAdmin.from("audit_chain").delete().neq("id", 0);
+    await supabaseAdmin.from("isw_transactions").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await supabaseAdmin.from("bank_transactions").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await supabaseAdmin.from("erp_invoices").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+
+    const { error: invErr } = await supabaseAdmin.from("erp_invoices").insert(invoices);
     if (invErr) throw new Error(`Invoice seed failed: ${invErr.message}`);
 
     // ── 2. ISW Transactions (what Interswitch says happened) ─────────
@@ -45,7 +54,7 @@ export async function POST() {
       { txn_ref: "SG-INV1050-1711234567011", merchant_code: "MX6072", response_code: "51", response_desc: "Insufficient Funds", amount_kobo: 12000000, settlement_batch_id: null, transaction_date: "2026-03-23T14:00:00Z", raw_response: { cust_email: "billing@viconsult.com" } },
     ];
 
-    const { error: iswErr } = await supabaseAdmin.from("isw_transactions").upsert(iswTransactions, { onConflict: "txn_ref" });
+    const { error: iswErr } = await supabaseAdmin.from("isw_transactions").insert(iswTransactions);
     if (iswErr) throw new Error(`ISW seed failed: ${iswErr.message}`);
 
     // ── 3. Bank Transactions (what the bank shows) ───────────────────
@@ -99,7 +108,7 @@ export async function POST() {
       },
     ];
 
-    const { error: bankErr } = await supabaseAdmin.from("bank_transactions").upsert(bankTransactions, { onConflict: "mono_id" });
+    const { error: bankErr } = await supabaseAdmin.from("bank_transactions").insert(bankTransactions);
     if (bankErr) throw new Error(`Bank seed failed: ${bankErr.message}`);
 
     return NextResponse.json({

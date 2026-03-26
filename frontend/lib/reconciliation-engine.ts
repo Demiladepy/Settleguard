@@ -360,13 +360,44 @@ export async function runReconciliation(
       })
       .eq("id", runId);
 
-    // 6. Audit log
+    // 6. Auto-create disputes for mismatches and orphans
+    const disputeableStatuses = ["amount_mismatch", "orphan_isw", "orphan_bank", "orphan_invoice", "isw_bank_match"];
+    const disputeMatches = insertedMatches.filter((m) =>
+      disputeableStatuses.includes(m.match_status)
+    );
+
+    for (const m of disputeMatches) {
+      const reasonMap: Record<string, string> = {
+        amount_mismatch: `Amount mismatch: ISW=${m.isw_amount}, Bank=${m.bank_amount}, ERP=${m.erp_amount}`,
+        orphan_isw: `ISW payment of ₦${((m.isw_amount || 0) / 100).toLocaleString()} has no matching invoice or bank record`,
+        orphan_bank: `Bank credit of ₦${((m.bank_amount || 0) / 100).toLocaleString()} has no matching ISW transaction`,
+        orphan_invoice: `Invoice worth ₦${((m.erp_amount || 0) / 100).toLocaleString()} marked paid but no ISW/bank record`,
+        isw_bank_match: `ISW payment of ₦${((m.isw_amount || 0) / 100).toLocaleString()} matched to bank but no invoice found`,
+      };
+
+      const priorityMap: Record<string, string> = {
+        amount_mismatch: "high",
+        orphan_isw: "medium",
+        orphan_bank: "high",
+        orphan_invoice: "critical",
+        isw_bank_match: "medium",
+      };
+
+      await supabaseAdmin.from("disputes").insert({
+        match_id: m.id,
+        isw_transaction_id: m.isw_transaction_id,
+        reason: reasonMap[m.match_status] || `Reconciliation issue: ${m.match_status}`,
+        priority: priorityMap[m.match_status] || "medium",
+      });
+    }
+
+    // 7. Audit log
     await appendToAuditChain({
       event_type: "reconciliation_completed",
       entity_type: "reconciliation_run",
       entity_id: runId,
       actor: "system",
-      payload: { matched, mismatched, unmatched, total: insertedMatches.length },
+      payload: { matched, mismatched, unmatched, total: insertedMatches.length, disputes_created: disputeMatches.length },
     });
 
     return {

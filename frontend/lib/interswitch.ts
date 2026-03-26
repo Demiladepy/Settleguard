@@ -1,5 +1,9 @@
+import crypto from "crypto";
+
 const ISW_BASE_URL = process.env.ISW_BASE_URL || "https://qa.interswitchng.com";
 const ISW_MERCHANT_CODE = process.env.ISW_MERCHANT_CODE || "MX6072";
+const ISW_CLIENT_ID = process.env.ISW_CLIENT_ID || "";
+const ISW_SECRET = process.env.ISW_SECRET || "";
 
 export interface IswVerifyResponse {
   ResponseCode: string;
@@ -14,7 +18,56 @@ export interface IswVerifyResponse {
 }
 
 /**
- * Verify a transaction with Interswitch (server-side requery)
+ * Get ISW access token via OAuth2 client_credentials grant.
+ * Token is used for server-to-server API calls (requery, refund).
+ */
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
+async function getIswAccessToken(): Promise<string> {
+  if (cachedToken && Date.now() < cachedToken.expiresAt) {
+    return cachedToken.token;
+  }
+
+  const credentials = Buffer.from(`${ISW_CLIENT_ID}:${ISW_SECRET}`).toString("base64");
+
+  const res = await fetch(`${ISW_BASE_URL}/passport/oauth/token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${credentials}`,
+    },
+    body: "grant_type=client_credentials",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.warn("ISW OAuth failed, falling back to unauthenticated:", text);
+    return "";
+  }
+
+  const data = await res.json();
+  cachedToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in || 3600) * 1000 - 60000,
+  };
+  return cachedToken.token;
+}
+
+/**
+ * Generate ISW signature hash for authenticated requests.
+ * Used for endpoints that require InterswitchAuth instead of Bearer token.
+ */
+export function generateIswSignature(resourceUrl: string, httpMethod: string): string {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const signatureCipher = `${httpMethod}&${encodeURIComponent(resourceUrl)}&${timestamp}&${nonce}&${ISW_CLIENT_ID}&${ISW_SECRET}`;
+  const signature = crypto.createHash("sha512").update(signatureCipher).digest("base64");
+  return JSON.stringify({ Timestamp: timestamp, Nonce: nonce, SignatureMethod: "SHA512", Signature: signature });
+}
+
+/**
+ * Verify a transaction with Interswitch (server-side requery).
+ * Uses OAuth2 bearer token. Falls back to unauthenticated for sandbox.
  */
 export async function verifyIswTransaction(
   txnRef: string,
@@ -26,15 +79,52 @@ export async function verifyIswTransaction(
     `&transactionreference=${encodeURIComponent(txnRef)}` +
     `&amount=${expectedAmountKobo}`;
 
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-  });
+  const token = await getIswAccessToken();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, { headers });
 
   if (!res.ok) {
     throw new Error(`ISW requery failed: ${res.status} ${res.statusText}`);
   }
 
   return res.json();
+}
+
+/**
+ * Request a refund via Interswitch.
+ * Only called by the AI agent when confidence > 0.9.
+ */
+export async function requestIswRefund(
+  txnRef: string,
+  amountKobo: number,
+  reason: string
+): Promise<{ success: boolean; response: Record<string, unknown> }> {
+  const token = await getIswAccessToken();
+  const url = `${ISW_BASE_URL}/collections/api/v1/refund`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      transactionReference: txnRef,
+      refundAmount: amountKobo,
+      merchantCode: ISW_MERCHANT_CODE,
+      reason,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  return { success: res.ok, response: data };
 }
 
 /**
