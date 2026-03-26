@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Shield, BarChart3, AlertTriangle, Link2, CreditCard, Menu, X } from "lucide-react";
+import { BarChart3, AlertTriangle, Link2, CreditCard, Menu, X, Shield } from "lucide-react";
 import { useState } from "react";
 
 const links = [
@@ -21,10 +22,13 @@ export function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-gray-800/60 bg-gray-950/80 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center">
-            <Shield className="w-4 h-4 text-white" />
+          <div className="w-9 h-9 rounded-lg overflow-hidden ring-1 ring-emerald-500/30">
+            <Image src="/logo.jpg" alt="SettleGuard" width={36} height={36} className="object-cover" />
           </div>
-          <span className="text-lg font-bold tracking-tight">SettleGuard</span>
+          <div className="flex flex-col">
+            <span className="text-lg font-bold tracking-tight leading-tight">SettleGuard</span>
+            <span className="text-[10px] text-emerald-400/70 leading-tight tracking-wider uppercase">Reconciliation Engine</span>
+          </div>
         </Link>
 
         {/* Desktop nav */}

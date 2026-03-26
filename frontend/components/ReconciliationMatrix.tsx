@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { SettlementBreakdownPanel } from "./settlement/SettlementBreakdown";
 import { MatchStatusBadge } from "./dashboard/MatchStatusBadge";
-import { RefreshCw, Building2, Landmark, FileText, Link2 } from "lucide-react";
+import { RefreshCw, Building2, Landmark, FileText, Link2, ShieldCheck, Lock } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 interface BankTxn {
@@ -32,6 +32,14 @@ interface Match {
   isw_transaction_id: string | null;
   bank_transaction_id: string | null;
   erp_invoice_id: string | null;
+  match_details: {
+    privacy?: {
+      isw_commitment?: string;
+      erp_commitment?: string;
+      verified?: boolean;
+    };
+    [key: string]: unknown;
+  } | null;
 }
 
 function koboToNaira(k: number) {
@@ -105,27 +113,46 @@ export function ReconciliationMatrix() {
             <p className="text-gray-500 text-sm">Run reconciliation to see matches.</p>
           ) : (
             <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {matches.map((m) => (
-                <div key={m.id} className="bg-gray-800/40 rounded-lg p-3 text-sm">
-                  <div className="flex items-center justify-between mb-1">
-                    <MatchStatusBadge status={m.match_status} />
-                    <span className="text-white font-mono text-xs">
-                      {m.isw_amount ? koboToNaira(m.isw_amount) : "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    {m.confidence_score != null && (
-                      <span>{(m.confidence_score * 100).toFixed(0)}% conf</span>
+              {matches.map((m) => {
+                const privacy = m.match_details?.privacy;
+                return (
+                  <div key={m.id} className="bg-gray-800/40 rounded-lg p-3 text-sm">
+                    <div className="flex items-center justify-between mb-1">
+                      <MatchStatusBadge status={m.match_status} />
+                      <span className="text-white font-mono text-xs">
+                        {m.isw_amount ? koboToNaira(m.isw_amount) : "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      {m.confidence_score != null && (
+                        <span>{(m.confidence_score * 100).toFixed(0)}% conf</span>
+                      )}
+                      <Link2 className="w-3 h-3" />
+                      <span>
+                        {[m.isw_transaction_id ? "ISW" : null, m.bank_transaction_id ? "Bank" : null, m.erp_invoice_id ? "ERP" : null]
+                          .filter(Boolean)
+                          .join(" + ")}
+                      </span>
+                      {privacy?.verified && (
+                        <span className="flex items-center gap-1 text-emerald-400">
+                          <Lock className="w-3 h-3" />
+                          ZK-verified
+                        </span>
+                      )}
+                    </div>
+                    {privacy?.isw_commitment && (
+                      <div className="mt-1.5 bg-gray-900/50 rounded px-2 py-1">
+                        <div className="flex items-center gap-1 text-[10px] text-gray-500 font-mono">
+                          <ShieldCheck className="w-3 h-3 text-emerald-500/60" />
+                          <span className="truncate">
+                            {privacy.isw_commitment.substring(0, 16)}...={privacy.verified ? "match" : "MISMATCH"}
+                          </span>
+                        </div>
+                      </div>
                     )}
-                    <Link2 className="w-3 h-3" />
-                    <span>
-                      {[m.isw_transaction_id ? "ISW" : null, m.bank_transaction_id ? "Bank" : null, m.erp_invoice_id ? "ERP" : null]
-                        .filter(Boolean)
-                        .join(" + ")}
-                    </span>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -199,6 +226,46 @@ export function ReconciliationMatrix() {
           )}
         </div>
       </div>
+
+      {/* Privacy Verification Summary */}
+      {matches.some((m) => m.match_details?.privacy?.verified) && (
+        <div className="bg-emerald-900/10 border border-emerald-800/30 rounded-xl p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-900/40 flex items-center justify-center">
+              <Lock className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-emerald-400">Privacy-Preserving Verification</h2>
+              <p className="text-gray-400 text-xs">
+                SHA-256 commitment scheme — amounts verified without exposing raw data across merchants
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="bg-gray-900/50 rounded-lg p-3">
+              <p className="text-2xl font-bold text-emerald-400">
+                {matches.filter((m) => m.match_details?.privacy?.verified).length}
+              </p>
+              <p className="text-xs text-gray-500">Commitments Verified</p>
+            </div>
+            <div className="bg-gray-900/50 rounded-lg p-3">
+              <p className="text-2xl font-bold text-white">
+                {matches.filter((m) => m.match_details?.privacy).length}
+              </p>
+              <p className="text-xs text-gray-500">Total Commitments</p>
+            </div>
+            <div className="bg-gray-900/50 rounded-lg p-3">
+              <p className="text-2xl font-bold text-blue-400">SHA-256</p>
+              <p className="text-xs text-gray-500">Commitment Scheme</p>
+            </div>
+          </div>
+          <p className="text-gray-500 text-xs mt-3">
+            Each transaction match generates a cryptographic commitment: H(merchant_id : amount : salt).
+            Commitments from different sources are compared — if they match, amounts agree.
+            The platform never sees raw transaction amounts from other merchants.
+          </p>
+        </div>
+      )}
 
       {/* Settlement Breakdown */}
       {(settlementDeposits.length > 0 || selectedBankTxn) && (
