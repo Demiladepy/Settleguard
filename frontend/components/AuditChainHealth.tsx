@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Shield, ShieldAlert, ShieldCheck, RefreshCw, Hash } from "lucide-react";
+import { Shield, ShieldCheck, ShieldAlert, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 interface AuditEntry {
@@ -28,6 +28,7 @@ export function AuditChainHealth() {
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
+  const [verifiedUpTo, setVerifiedUpTo] = useState(-1);
 
   const fetchEntries = useCallback(async () => {
     try {
@@ -42,91 +43,207 @@ export function AuditChainHealth() {
 
   const verify = async () => {
     setVerifying(true);
+    setVerifiedUpTo(-1);
+    setVerifyResult(null);
+
     try {
       const res = await fetch("/api/audit/verify", { method: "POST" });
       const data = await res.json();
+
+      // Animate chain verification — pulse through each block
+      const total = Math.min(entries.length, 20);
+      for (let i = 0; i < total; i++) {
+        await new Promise((r) => setTimeout(r, 80));
+        setVerifiedUpTo(i);
+        if (!data.valid && data.brokenAt === entries[i]?.id) break;
+      }
+
       setVerifyResult(data);
       if (data.valid) {
-        toast.success(`Chain integrity verified: ${data.totalEntries} entries, all valid`);
+        toast.success(`Chain intact: ${data.totalEntries} entries verified`);
       } else {
-        toast.error(`Chain BROKEN at entry #${data.brokenAt}: ${data.details}`);
+        toast.error(`Chain BROKEN at entry #${data.brokenAt}`);
       }
-    } catch { toast.error("Verification failed"); }
+    } catch {
+      toast.error("Verification failed");
+    }
     setVerifying(false);
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><RefreshCw className="w-6 h-6 animate-spin text-gray-500" /></div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="w-5 h-5 animate-sg-spin text-sg-text-tertiary" />
+      </div>
+    );
   }
 
+  const isBroken = verifyResult && !verifyResult.valid;
+  const isVerified = verifyResult?.valid;
+
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Tamper-Evident Audit Chain</h1>
-          <p className="text-gray-400 text-sm mt-1">SHA-256 hash-linked chain of all reconciliation events</p>
+          <h1 className="text-xl font-mono font-bold text-sg-text">Audit Chain</h1>
+          <p className="text-sg-text-tertiary text-[13px] mt-0.5">
+            SHA-256 hash-linked chain &mdash; {entries.length} entries
+          </p>
         </div>
-        <button onClick={verify} disabled={verifying} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2">
-          <Shield className={`w-4 h-4 ${verifying ? "animate-pulse" : ""}`} />
-          {verifying ? "Verifying..." : "Verify Chain Integrity"}
+        <button
+          onClick={verify}
+          disabled={verifying}
+          className="px-3 py-1.5 bg-sg-accent/10 border border-sg-accent/30 hover:bg-sg-accent/20 rounded-md text-[13px] font-medium text-sg-accent transition-colors disabled:opacity-50 flex items-center gap-1.5"
+        >
+          <Shield className={`w-3.5 h-3.5 ${verifying ? "animate-sg-spin" : ""}`} />
+          {verifying ? "Verifying..." : "Verify Integrity"}
         </button>
       </div>
 
       {/* Verify result banner */}
       {verifyResult && (
-        <div className={`rounded-xl p-5 flex items-center gap-4 ${verifyResult.valid ? "bg-emerald-900/20 border border-emerald-800/40" : "bg-red-900/20 border border-red-800/40"}`}>
+        <div className={`rounded-lg p-4 flex items-center gap-3 ${
+          verifyResult.valid
+            ? "bg-sg-matched/5 border border-sg-matched/20"
+            : "bg-sg-mismatch/5 border border-sg-mismatch/20"
+        }`}>
           {verifyResult.valid ? (
-            <>
-              <ShieldCheck className="w-8 h-8 text-emerald-400 shrink-0" />
-              <div>
-                <p className="font-semibold text-emerald-400">Chain Integrity Verified</p>
-                <p className="text-gray-400 text-sm">{verifyResult.totalEntries} entries checked — all hashes valid, no tampering detected.</p>
-              </div>
-            </>
+            <ShieldCheck className="w-6 h-6 text-sg-matched shrink-0" />
           ) : (
-            <>
-              <ShieldAlert className="w-8 h-8 text-red-400 shrink-0" />
-              <div>
-                <p className="font-semibold text-red-400">Chain Integrity BROKEN</p>
-                <p className="text-gray-300 text-sm">Tamper detected at entry #{verifyResult.brokenAt}</p>
-                <p className="text-gray-400 text-xs mt-0.5">{verifyResult.details}</p>
-              </div>
-            </>
+            <ShieldAlert className="w-6 h-6 text-sg-mismatch shrink-0" />
           )}
+          <div>
+            <p className={`text-sm font-mono font-semibold ${verifyResult.valid ? "text-sg-matched" : "text-sg-mismatch"}`}>
+              {verifyResult.valid ? "CHAIN INTEGRITY VERIFIED" : "CHAIN INTEGRITY BROKEN"}
+            </p>
+            <p className="text-sg-text-tertiary text-[11px]">
+              {verifyResult.valid
+                ? `${verifyResult.totalEntries} entries checked — no tampering detected`
+                : `Tamper detected at entry #${verifyResult.brokenAt}: ${verifyResult.details}`}
+            </p>
+          </div>
         </div>
       )}
 
-      {/* Chain entries */}
-      <div className="bg-gray-900/50 border border-gray-800/60 rounded-xl p-6">
-        <h2 className="text-lg font-semibold mb-4">Audit Entries ({entries.length})</h2>
-        {entries.length === 0 ? (
-          <p className="text-gray-500 text-sm">No audit entries yet. Run some operations to generate entries.</p>
-        ) : (
-          <div className="space-y-3">
-            {entries.map((e, i) => (
-              <div key={e.id} className={`bg-gray-800/30 rounded-lg p-4 ${verifyResult && !verifyResult.valid && verifyResult.brokenAt === e.id ? "ring-2 ring-red-500" : ""}`}>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-mono text-gray-500">#{e.id}</span>
-                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300">{e.event_type}</span>
-                      <span className="text-xs text-gray-500">{e.entity_type}</span>
+      {/* Horizontal hash chain visualization */}
+      {entries.length > 0 && (
+        <div className="bg-sg-bg-card border border-sg-border rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-1 h-4 bg-sg-accent rounded-full" />
+            <h2 className="text-sm font-mono font-semibold text-sg-text uppercase tracking-wider">
+              Hash Chain
+            </h2>
+            {isVerified && (
+              <span className="text-[10px] font-mono text-sg-matched ml-auto">INTACT</span>
+            )}
+          </div>
+
+          <div className="overflow-x-auto sg-scrollbar pb-2">
+            <div className="flex items-center gap-0 min-w-max">
+              {entries.slice(0, 20).map((e, i) => {
+                const isVerifiedBlock = verifiedUpTo >= i;
+                const isBrokenBlock = isBroken && verifyResult?.brokenAt === e.id;
+
+                return (
+                  <div key={e.id} className="flex items-center">
+                    {/* Block */}
+                    <div
+                      className={`border rounded-lg px-3 py-2 min-w-[90px] text-center transition-all duration-300 ${
+                        isBrokenBlock
+                          ? "border-sg-mismatch bg-sg-mismatch/10 animate-sg-chain-break"
+                          : isVerifiedBlock
+                          ? "border-sg-matched/50 bg-sg-matched/5 animate-sg-chain-verify"
+                          : "border-sg-border bg-sg-bg"
+                      }`}
+                      style={isVerifiedBlock && !isBrokenBlock ? { animationDelay: `${i * 80}ms` } : undefined}
+                    >
+                      <p className="text-[10px] text-sg-text-tertiary font-mono">#{e.id}</p>
+                      <p className={`text-[11px] font-mono font-bold ${
+                        isBrokenBlock ? "text-sg-mismatch" : isVerifiedBlock ? "text-sg-matched" : "text-sg-text"
+                      }`}>
+                        {e.hash.substring(0, 6)}
+                      </p>
+                      <p className="text-[9px] text-sg-text-tertiary font-mono mt-0.5">
+                        {e.event_type}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                      <Hash className="w-3 h-3" />
-                      <span className="font-mono">{e.hash.substring(0, 16)}...</span>
-                      {i < entries.length - 1 && (
-                        <span className="text-gray-600 ml-2">prev: {e.prev_hash.substring(0, 12)}...</span>
-                      )}
-                    </div>
+
+                    {/* Connector arrow */}
+                    {i < Math.min(entries.length, 20) - 1 && (
+                      <div className="flex items-center px-1">
+                        <div className={`w-6 h-px ${
+                          isBrokenBlock
+                            ? "bg-sg-mismatch"
+                            : isVerifiedBlock && verifiedUpTo > i
+                            ? "bg-sg-matched/50"
+                            : "bg-sg-border"
+                        }`} />
+                        <div className={`w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[5px] ${
+                          isBrokenBlock
+                            ? "border-l-sg-mismatch"
+                            : isVerifiedBlock && verifiedUpTo > i
+                            ? "border-l-sg-matched/50"
+                            : "border-l-sg-border"
+                        }`} />
+                      </div>
+                    )}
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-xs text-gray-500">{e.actor}</p>
-                    <p className="text-xs text-gray-600">{new Date(e.created_at).toLocaleString()}</p>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detailed entries list */}
+      <div className="bg-sg-bg-card border border-sg-border rounded-lg">
+        <div className="px-4 py-3 border-b border-sg-border">
+          <h2 className="text-sm font-semibold text-sg-text">Audit Entries ({entries.length})</h2>
+        </div>
+
+        {entries.length === 0 ? (
+          <p className="text-sg-text-tertiary text-sm py-6 text-center">
+            No audit entries yet. Run operations to generate entries.
+          </p>
+        ) : (
+          <div className="max-h-[500px] overflow-y-auto sg-scrollbar">
+            {entries.map((e) => {
+              const isBrokenEntry = isBroken && verifyResult?.brokenAt === e.id;
+              return (
+                <div
+                  key={e.id}
+                  className={`px-4 py-3 border-b border-sg-border/50 border-l-2 hover:bg-sg-bg-hover/30 transition-colors ${
+                    isBrokenEntry ? "border-l-sg-mismatch bg-sg-mismatch/5" : "border-l-transparent"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[11px] font-mono font-medium text-sg-text-tertiary">#{e.id}</span>
+                        <span className="text-[11px] font-mono font-medium text-sg-text bg-sg-bg-hover px-1.5 py-0.5 rounded-sm">
+                          {e.event_type}
+                        </span>
+                        <span className="text-[11px] text-sg-text-tertiary">{e.entity_type}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px] text-sg-text-tertiary font-mono mt-1">
+                        <span className={isBrokenEntry ? "text-sg-mismatch" : "text-sg-text-secondary"}>
+                          {e.hash.substring(0, 16)}...
+                        </span>
+                        <span className="text-sg-text-tertiary mx-1">&larr;</span>
+                        <span>{e.prev_hash.substring(0, 12)}...</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-[11px] text-sg-text-tertiary">{e.actor}</p>
+                      <p className="text-[10px] text-sg-text-tertiary font-mono">
+                        {new Date(e.created_at).toLocaleString()}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

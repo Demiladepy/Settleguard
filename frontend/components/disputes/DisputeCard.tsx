@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Bot, Search, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, RefreshCw, ChevronDown, ChevronRight, Bot } from "lucide-react";
 import { InvestigationTimeline } from "./InvestigationTimeline";
 import { MatchStatusBadge } from "../dashboard/MatchStatusBadge";
 import { toast } from "sonner";
@@ -32,24 +32,28 @@ interface InvestigationResult {
   tool_calls: ToolCall[];
 }
 
-function priorityColor(p: string) {
+function priorityBorder(p: string) {
   switch (p) {
-    case "critical": return "bg-red-900/50 text-red-400";
-    case "high": return "bg-orange-900/50 text-orange-400";
-    case "medium": return "bg-yellow-900/50 text-yellow-400";
-    default: return "bg-gray-700 text-gray-300";
+    case "critical": return "border-l-sg-mismatch";
+    case "high": return "border-l-sg-orphan";
+    case "medium": return "border-l-sg-pending";
+    default: return "border-l-sg-text-tertiary";
   }
 }
 
-function recColor(r: string) {
+function recommendationBorder(r: string) {
   switch (r) {
-    case "refund": return "text-red-400";
-    case "reject": return "text-gray-400";
-    case "escalate": return "text-orange-400";
-    case "wait": return "text-yellow-400";
-    case "auto_resolved": return "text-emerald-400";
-    default: return "text-gray-500";
+    case "refund": return "border-sg-matched/30 bg-sg-matched/5";
+    case "escalate": return "border-sg-pending/30 bg-sg-pending/5";
+    case "reject": return "border-sg-mismatch/30 bg-sg-mismatch/5";
+    default: return "border-sg-border bg-sg-bg-hover/50";
   }
+}
+
+function confidenceColor(c: number) {
+  if (c > 0.85) return "bg-sg-matched";
+  if (c > 0.5) return "bg-sg-pending";
+  return "bg-sg-mismatch";
 }
 
 export function DisputeCard({
@@ -92,33 +96,34 @@ export function DisputeCard({
     (dispute.ai_investigation?.tool_calls as ToolCall[]) ||
     [];
   const hasInvestigation = result || dispute.ai_recommendation;
+  const confidence = result?.confidence ?? dispute.ai_confidence ?? 0;
+  const recommendation = result?.recommendation ?? dispute.ai_recommendation ?? "";
 
   return (
-    <div className="bg-gray-900/50 border border-gray-800/60 rounded-xl overflow-hidden">
-      <div className="p-5">
-        {/* Header */}
+    <div className={`bg-sg-bg-card border border-sg-border border-l-2 ${priorityBorder(dispute.priority)} rounded-lg overflow-hidden`}>
+      <div className="p-4">
+        {/* Header row */}
         <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <AlertTriangle className="w-4 h-4 text-yellow-400" />
-              <span className={`px-2 py-0.5 rounded text-xs font-medium ${priorityColor(dispute.priority)}`}>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <span className="text-[11px] font-mono font-medium text-sg-text-tertiary uppercase tracking-wider">
                 {dispute.priority}
               </span>
               {dispute.ai_recommendation && (
                 <MatchStatusBadge status={dispute.ai_recommendation} />
               )}
-              {(result?.confidence ?? dispute.ai_confidence) != null && (
-                <span className={`text-xs font-medium ${recColor(dispute.ai_recommendation || result?.recommendation || "")}`}>
-                  {((result?.confidence ?? dispute.ai_confidence ?? 0) * 100).toFixed(0)}% confidence
+              {confidence > 0 && (
+                <span className="text-[11px] font-mono text-sg-text-tertiary">
+                  {(confidence * 100).toFixed(0)}% conf
                 </span>
               )}
             </div>
-            <p className="text-white text-sm font-medium">{dispute.reason}</p>
-            <p className="text-gray-500 text-xs mt-1">
+            <p className="text-sg-text text-sm font-medium">{dispute.reason}</p>
+            <p className="text-sg-text-tertiary text-[11px] font-mono mt-1">
               {new Date(dispute.created_at).toLocaleString()}
             </p>
             {dispute.resolution && (
-              <p className="text-emerald-400 text-sm mt-2 flex items-center gap-1">
+              <p className="text-sg-matched text-[13px] mt-2">
                 Resolved by {dispute.resolved_by}: {dispute.resolution}
               </p>
             )}
@@ -127,66 +132,65 @@ export function DisputeCard({
           <button
             onClick={investigate}
             disabled={investigating}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2 shrink-0"
+            className="px-3 py-1.5 bg-sg-info/10 border border-sg-info/30 hover:bg-sg-info/20 rounded-md text-[13px] font-medium text-sg-info transition-colors disabled:opacity-50 flex items-center gap-1.5 shrink-0"
           >
             {investigating ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Investigating...
-              </>
+              <><RefreshCw className="w-3.5 h-3.5 animate-sg-spin" />Investigating...</>
             ) : (
-              <>
-                <Search className="w-4 h-4" />
-                {hasInvestigation ? "Re-investigate" : "Investigate"}
-              </>
+              <><Search className="w-3.5 h-3.5" />{hasInvestigation ? "Re-investigate" : "Investigate"}</>
             )}
           </button>
         </div>
 
-        {/* AI Result summary */}
-        {(result || dispute.ai_recommendation) && (
-          <div className="mt-4 bg-gray-800/50 rounded-lg p-4">
+        {/* AI Investigation Result */}
+        {hasInvestigation && (
+          <div className={`mt-4 rounded-lg p-4 border ${recommendationBorder(recommendation)}`}>
             <div className="flex items-center gap-2 mb-2">
-              <Bot className="w-4 h-4 text-blue-400" />
-              <span className="font-semibold text-sm">AI Agent Investigation</span>
+              <Bot className="w-4 h-4 text-sg-accent" />
+              <span className="text-[13px] font-semibold text-sg-text">AI Investigation</span>
+              {recommendation && (
+                <span className="text-[11px] font-mono font-medium text-sg-text-secondary uppercase">
+                  {recommendation}
+                </span>
+              )}
             </div>
 
             {result?.summary && (
-              <p className="text-gray-300 text-sm mb-2">{result.summary}</p>
+              <p className="text-sg-text-secondary text-[13px] mb-2 italic">
+                &ldquo;{result.summary}&rdquo;
+              </p>
             )}
 
             {(result?.evidence || dispute.ai_investigation?.evidence)?.map((e, i) => (
-              <p key={i} className="text-gray-400 text-xs ml-4 before:content-['•'] before:mr-2">
+              <p key={i} className="text-sg-text-tertiary text-[11px] ml-3 before:content-['▸'] before:mr-2 before:text-sg-accent">
                 {e as string}
               </p>
             ))}
 
-            {/* Confidence bar */}
-            {(result?.confidence ?? dispute.ai_confidence) != null && (
-              <div className="mt-3">
-                <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+            {/* Confidence bar — horizontal, not circular */}
+            {confidence > 0 && (
+              <div className="mt-3 flex items-center gap-3">
+                <span className="text-[11px] font-mono text-sg-text-tertiary shrink-0">Confidence:</span>
+                <div className="flex-1 h-2 bg-sg-bg-hover rounded-sm overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      (result?.confidence ?? dispute.ai_confidence ?? 0) > 0.8
-                        ? "bg-emerald-500"
-                        : (result?.confidence ?? dispute.ai_confidence ?? 0) > 0.5
-                        ? "bg-yellow-500"
-                        : "bg-red-500"
-                    }`}
-                    style={{ width: `${((result?.confidence ?? dispute.ai_confidence ?? 0) * 100)}%` }}
+                    className={`h-full rounded-sm transition-all duration-700 ${confidenceColor(confidence)}`}
+                    style={{ width: `${confidence * 100}%` }}
                   />
                 </div>
+                <span className="text-[11px] font-mono font-medium text-sg-text tabular-nums">
+                  {(confidence * 100).toFixed(0)}%
+                </span>
               </div>
             )}
           </div>
         )}
 
-        {/* Investigation timeline toggle */}
+        {/* Timeline toggle */}
         {toolCalls.length > 0 && (
           <div className="mt-3">
             <button
               onClick={() => setShowTimeline(!showTimeline)}
-              className="flex items-center gap-1.5 text-gray-400 hover:text-white text-xs font-medium transition-colors"
+              className="flex items-center gap-1.5 text-sg-text-tertiary hover:text-sg-text text-[11px] font-mono font-medium transition-colors"
             >
               {showTimeline ? (
                 <ChevronDown className="w-3.5 h-3.5" />
@@ -195,9 +199,7 @@ export function DisputeCard({
               )}
               {toolCalls.length} tool calls
             </button>
-            {showTimeline && (
-              <InvestigationTimeline toolCalls={toolCalls} />
-            )}
+            {showTimeline && <InvestigationTimeline toolCalls={toolCalls} />}
           </div>
         )}
       </div>

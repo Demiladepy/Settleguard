@@ -1,85 +1,116 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin } from "./supabase";
 import { koboToNaira } from "./interswitch";
 import { decomposeSettlement } from "./settlement-decomposer";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// ── Tool definitions ─────────────────────────────────────────────────
+// ── Tool definitions (OpenAI function-calling format) ───────────────
 
-const tools: Anthropic.Tool[] = [
+interface ToolDef {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: "object";
+      properties: Record<string, unknown>;
+      required?: string[];
+    };
+  };
+}
+
+const tools: ToolDef[] = [
   {
-    name: "query_isw_transaction",
-    description: "Get Interswitch transaction details by reference or batch ID",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        txn_ref: { type: "string", description: "Transaction reference" },
-        batch_id: { type: "string", description: "Settlement batch ID" },
+    type: "function",
+    function: {
+      name: "query_isw_transaction",
+      description: "Get Interswitch transaction details by reference or batch ID",
+      parameters: {
+        type: "object",
+        properties: {
+          txn_ref: { type: "string", description: "Transaction reference" },
+          batch_id: { type: "string", description: "Settlement batch ID" },
+        },
       },
     },
   },
   {
-    name: "query_bank_transactions",
-    description:
-      "Search bank transactions by date range, amount, or narration keyword",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        date_from: { type: "string" },
-        date_to: { type: "string" },
-        amount_kobo: { type: "integer" },
-        narration_contains: { type: "string" },
+    type: "function",
+    function: {
+      name: "query_bank_transactions",
+      description:
+        "Search bank transactions by date range, amount, or narration keyword",
+      parameters: {
+        type: "object",
+        properties: {
+          date_from: { type: "string" },
+          date_to: { type: "string" },
+          amount_kobo: { type: "integer" },
+          narration_contains: { type: "string" },
+        },
       },
     },
   },
   {
-    name: "query_erp_invoices",
-    description: "Search Zoho Books invoices by customer, amount, or status",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        customer_email: { type: "string" },
-        amount_kobo: { type: "integer" },
-        status: { type: "string" },
+    type: "function",
+    function: {
+      name: "query_erp_invoices",
+      description: "Search Zoho Books invoices by customer, amount, or status",
+      parameters: {
+        type: "object",
+        properties: {
+          customer_email: { type: "string" },
+          amount_kobo: { type: "integer" },
+          status: { type: "string" },
+        },
       },
     },
   },
   {
-    name: "get_customer_dispute_history",
-    description: "Get all past disputes for a customer email",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        customer_email: { type: "string" },
+    type: "function",
+    function: {
+      name: "get_customer_dispute_history",
+      description: "Get all past disputes for a customer email",
+      parameters: {
+        type: "object",
+        properties: {
+          customer_email: { type: "string" },
+        },
+        required: ["customer_email"],
       },
-      required: ["customer_email"],
     },
   },
   {
-    name: "calculate_settlement_breakdown",
-    description:
-      "Decompose a bank settlement into individual ISW transactions by batch ID",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        batch_id: { type: "string" },
+    type: "function",
+    function: {
+      name: "calculate_settlement_breakdown",
+      description:
+        "Decompose a bank settlement into individual ISW transactions by batch ID",
+      parameters: {
+        type: "object",
+        properties: {
+          batch_id: { type: "string" },
+        },
+        required: ["batch_id"],
       },
-      required: ["batch_id"],
     },
   },
   {
-    name: "execute_refund",
-    description:
-      "Issue a refund via Interswitch for a specific transaction. Only call if confidence > 0.9",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        txn_ref: { type: "string" },
-        amount_kobo: { type: "integer" },
-        reason: { type: "string" },
+    type: "function",
+    function: {
+      name: "execute_refund",
+      description:
+        "Issue a refund via Interswitch for a specific transaction. Only call if confidence > 0.9",
+      parameters: {
+        type: "object",
+        properties: {
+          txn_ref: { type: "string" },
+          amount_kobo: { type: "integer" },
+          reason: { type: "string" },
+        },
+        required: ["txn_ref", "amount_kobo", "reason"],
       },
-      required: ["txn_ref", "amount_kobo", "reason"],
     },
   },
 ];
@@ -142,7 +173,6 @@ async function executeTool(
 
     case "get_customer_dispute_history": {
       const email = input.customer_email as string;
-      // Find ISW transactions by customer email in raw_response
       const { data: iswTxns } = await supabaseAdmin
         .from("isw_transactions")
         .select("id")
@@ -182,8 +212,6 @@ async function executeTool(
     }
 
     case "execute_refund": {
-      // In production, this would call the Interswitch refund API.
-      // For the hackathon demo, we simulate it.
       return JSON.stringify({
         status: "refund_initiated",
         txn_ref: input.txn_ref,
@@ -196,6 +224,45 @@ async function executeTool(
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` });
   }
+}
+
+// ── OpenRouter API call ─────────────────────────────────────────────
+
+interface ChatMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string | null;
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }>;
+  tool_call_id?: string;
+}
+
+async function chatCompletion(messages: ChatMessage[]) {
+  const res = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      "HTTP-Referer": "https://settleguard.ng",
+      "X-Title": "SettleGuard AI Agent",
+    },
+    body: JSON.stringify({
+      model: "anthropic/claude-sonnet-4",
+      max_tokens: 4096,
+      messages,
+      tools,
+      tool_choice: "auto",
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`OpenRouter API error ${res.status}: ${errText}`);
+  }
+
+  return res.json();
 }
 
 // ── Agent loop ───────────────────────────────────────────────────────
@@ -241,7 +308,7 @@ export interface AgentResult {
 }
 
 /**
- * Run the AI dispute investigation agent.
+ * Run the AI dispute investigation agent via OpenRouter.
  * Returns the agent's recommendation + full tool call trace for transparency.
  */
 export async function investigateDispute(
@@ -267,32 +334,54 @@ Query all three data sources and investigate thoroughly.`;
 
   const toolCallTrace: AgentResult["toolCalls"] = [];
 
-  let messages: Anthropic.MessageParam[] = [
+  const messages: ChatMessage[] = [
+    { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: userMessage },
   ];
 
   // Agent loop — max 10 iterations to prevent runaway
   for (let i = 0; i < 10; i++) {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      tools,
-      messages,
-    });
+    const data = await chatCompletion(messages);
+    const choice = data.choices?.[0];
 
-    // Collect text and tool use blocks
-    const toolUseBlocks = response.content.filter(
-      (b): b is Anthropic.ContentBlock & { type: "tool_use" } =>
-        b.type === "tool_use"
-    );
-    const textBlocks = response.content.filter(
-      (b): b is Anthropic.ContentBlock & { type: "text" } => b.type === "text"
-    );
+    if (!choice) {
+      break;
+    }
 
-    if (response.stop_reason === "end_turn" || toolUseBlocks.length === 0) {
-      // Agent is done — parse final text
-      const finalText = textBlocks.map((b) => b.text).join("\n");
+    const message = choice.message;
+    const finishReason = choice.finish_reason;
+
+    // Add assistant message to conversation
+    messages.push(message);
+
+    // Check if the model wants to call tools
+    if (message.tool_calls && message.tool_calls.length > 0) {
+      // Execute each tool call
+      for (const toolCall of message.tool_calls) {
+        const fnName = toolCall.function.name;
+        let fnArgs: Record<string, unknown> = {};
+        try {
+          fnArgs = JSON.parse(toolCall.function.arguments);
+        } catch {
+          fnArgs = {};
+        }
+
+        const output = await executeTool(fnName, fnArgs);
+        toolCallTrace.push({ tool: fnName, input: fnArgs, output });
+
+        // Add tool result to conversation
+        messages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: output,
+        });
+      }
+      continue;
+    }
+
+    // No tool calls — agent is done
+    if (finishReason === "stop" || !message.tool_calls) {
+      const finalText = message.content || "";
       try {
         const jsonMatch = finalText.match(/\{[\s\S]*"recommendation"[\s\S]*\}/);
         if (jsonMatch) {
@@ -310,35 +399,6 @@ Query all three data sources and investigate thoroughly.`;
         toolCalls: toolCallTrace,
       };
     }
-
-    // Execute tool calls
-    const toolResults: Anthropic.MessageParam = {
-      role: "user",
-      content: await Promise.all(
-        toolUseBlocks.map(async (block) => {
-          const output = await executeTool(
-            block.name,
-            block.input as Record<string, unknown>
-          );
-          toolCallTrace.push({
-            tool: block.name,
-            input: block.input as Record<string, unknown>,
-            output,
-          });
-          return {
-            type: "tool_result" as const,
-            tool_use_id: block.id,
-            content: output,
-          };
-        })
-      ),
-    };
-
-    messages = [
-      ...messages,
-      { role: "assistant", content: response.content },
-      toolResults,
-    ];
   }
 
   return {

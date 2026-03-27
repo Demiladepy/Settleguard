@@ -52,65 +52,42 @@ export function Dashboard() {
   };
 
   return (
-    <div className="space-y-8">
-      {/* Hero banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-900/40 via-gray-900 to-blue-900/30 border border-gray-800/60 p-6 sm:p-8">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.1),transparent_50%)]" />
-        <div className="relative">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-                SettleGuard
-              </h1>
-              <p className="text-emerald-400/80 text-sm font-medium mt-1">
-                Multi-Source AI Reconciliation Engine
-              </p>
-              <p className="text-gray-400 text-sm mt-2 max-w-lg leading-relaxed">
-                Three-way automated matching across Interswitch, bank accounts, and Zoho Books.
-                AI-powered dispute resolution. Tamper-evident audit chain.
-              </p>
-              <div className="flex items-center gap-4 mt-4 text-xs text-gray-500">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-blue-400" />
-                  Interswitch Gateway
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                  Bank via Mono
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-purple-400" />
-                  Zoho Books ERP
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 flex-wrap shrink-0">
-              <IntegrityIndicator />
-              <button
-                onClick={handleSeed}
-                disabled={seeding}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                <Database className="w-4 h-4" />
-                {seeding ? "Seeding..." : "Seed Demo Data"}
-              </button>
-              <button
-                onClick={handleReconcile}
-                disabled={reconciling}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                <RefreshCw className={`w-4 h-4 ${reconciling ? "animate-spin" : ""}`} />
-                {reconciling ? "Running..." : "Run Reconciliation"}
-              </button>
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* Command bar */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-mono font-bold text-sg-text">
+            Command Center
+          </h1>
+          <p className="text-sg-text-tertiary text-[13px] mt-0.5">
+            ISW + Bank + Zoho Books &mdash; three-way reconciliation
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <IntegrityIndicator />
+          <button
+            onClick={handleSeed}
+            disabled={seeding}
+            className="px-3 py-1.5 bg-sg-bg-card border border-sg-border hover:border-sg-border-hover rounded-md text-[13px] font-medium text-sg-text-secondary hover:text-sg-text transition-colors disabled:opacity-50 flex items-center gap-1.5"
+          >
+            <Database className="w-3.5 h-3.5" />
+            {seeding ? "Seeding..." : "Seed Data"}
+          </button>
+          <button
+            onClick={handleReconcile}
+            disabled={reconciling}
+            className="px-3 py-1.5 bg-sg-accent/10 border border-sg-accent/30 hover:bg-sg-accent/20 rounded-md text-[13px] font-medium text-sg-accent transition-colors disabled:opacity-50 flex items-center gap-1.5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${reconciling ? "animate-sg-spin" : ""}`} />
+            {reconciling ? "Running..." : "Reconcile"}
+          </button>
         </div>
       </div>
 
-      {/* Stats with Realtime */}
+      {/* Stats */}
       <StatsCards />
 
-      {/* Transaction Feed with Realtime */}
+      {/* Transaction Feed */}
       <TransactionFeed />
     </div>
   );

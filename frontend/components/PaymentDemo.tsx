@@ -61,7 +61,6 @@ export function PaymentDemo() {
       mode: "TEST",
       onComplete: async (response: Record<string, unknown>) => {
         console.log("ISW response:", response);
-        // Send to webhook for server-side verification
         try {
           const res = await fetch("/api/webhooks/interswitch", {
             method: "POST",
@@ -88,69 +87,93 @@ export function PaymentDemo() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><RefreshCw className="w-6 h-6 animate-spin text-gray-500" /></div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="w-5 h-5 animate-sg-spin text-sg-text-tertiary" />
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <Script src="https://newwebpay.qa.interswitchng.com/inline-checkout.js" strategy="lazyOnload" />
 
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Payment Demo</h1>
-        <p className="text-gray-400 text-sm mt-1">
-          Pay an invoice using Interswitch test cards. Payment triggers real-time reconciliation.
+        <h1 className="text-xl font-mono font-bold text-sg-text">Payment Demo</h1>
+        <p className="text-sg-text-tertiary text-[13px] mt-0.5">
+          Pay an invoice using Interswitch test cards &mdash; triggers real-time reconciliation
         </p>
       </div>
 
       {/* Test card info */}
-      <div className="bg-blue-900/20 border border-blue-800/40 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-blue-400 mb-2">Test Card for Demo</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-          <div><span className="text-gray-400 text-xs">Card</span><p className="text-white font-mono text-xs">5060990580000217499</p></div>
-          <div><span className="text-gray-400 text-xs">Expiry</span><p className="text-white font-mono text-xs">03/50</p></div>
-          <div><span className="text-gray-400 text-xs">CVV</span><p className="text-white font-mono text-xs">111</p></div>
-          <div><span className="text-gray-400 text-xs">PIN</span><p className="text-white font-mono text-xs">1111</p></div>
+      <div className="bg-sg-info/5 border border-sg-info/20 rounded-lg p-4">
+        <h2 className="text-[11px] font-mono font-semibold text-sg-info uppercase tracking-wider mb-3">
+          Test Card for Demo
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: "CARD", value: "5060990580000217499" },
+            { label: "EXPIRY", value: "03/50" },
+            { label: "CVV", value: "111" },
+            { label: "PIN", value: "1111" },
+          ].map((item) => (
+            <div key={item.label}>
+              <span className="text-sg-text-tertiary text-[10px] font-mono uppercase tracking-wider">{item.label}</span>
+              <p className="text-sg-text font-mono text-[13px] font-medium mt-0.5">{item.value}</p>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Invoice list */}
       {invoices.length === 0 ? (
-        <div className="bg-gray-900/50 border border-gray-800/60 rounded-xl p-8 text-center">
-          <CreditCard className="w-8 h-8 text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-400">No invoices yet. Seed demo data from the dashboard first.</p>
+        <div className="bg-sg-bg-card border border-sg-border rounded-lg p-8 text-center">
+          <CreditCard className="w-6 h-6 text-sg-text-tertiary mx-auto mb-3" />
+          <p className="text-sg-text-tertiary text-sm">
+            No invoices yet. Seed demo data from the dashboard first.
+          </p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2">
           {invoices.map((inv) => (
-            <div key={inv.id} className="bg-gray-900/50 border border-gray-800/60 rounded-xl p-5">
+            <div key={inv.id} className="bg-sg-bg-card border border-sg-border rounded-lg p-4">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <p className="font-semibold text-white">{inv.invoice_number}</p>
-                  <p className="text-gray-400 text-sm">{inv.customer_name}</p>
-                  <p className="text-gray-500 text-xs">{inv.customer_email}</p>
+                  <p className="font-mono font-semibold text-sg-text text-[13px]">{inv.invoice_number}</p>
+                  <p className="text-sg-text-secondary text-[13px]">{inv.customer_name}</p>
+                  <p className="text-sg-text-tertiary text-[11px] font-mono">{inv.customer_email}</p>
                 </div>
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${inv.status === "paid" ? "bg-emerald-900/50 text-emerald-400" : inv.status === "overdue" ? "bg-red-900/50 text-red-400" : "bg-gray-700 text-gray-300"}`}>
-                  {inv.status}
+                <span className={`text-[11px] font-mono font-medium px-1.5 py-0.5 rounded-sm ${
+                  inv.status === "paid"
+                    ? "text-sg-matched bg-sg-matched/10"
+                    : inv.status === "overdue"
+                    ? "text-sg-mismatch bg-sg-mismatch/10"
+                    : "text-sg-text-secondary bg-sg-bg-hover"
+                }`}>
+                  {inv.status.toUpperCase()}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <p className="text-xl font-bold text-white">{koboToNaira(inv.amount_kobo)}</p>
+                <p className="text-xl font-mono font-bold text-sg-text tabular-nums">
+                  {koboToNaira(inv.amount_kobo)}
+                </p>
                 {inv.status !== "paid" ? (
                   <button
                     onClick={() => handlePay(inv)}
                     disabled={paying === inv.id}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                    className="px-3 py-1.5 bg-sg-accent/10 border border-sg-accent/30 hover:bg-sg-accent/20 rounded-md text-[13px] font-medium text-sg-accent transition-colors disabled:opacity-50 flex items-center gap-1.5"
                   >
                     {paying === inv.id ? (
-                      <><RefreshCw className="w-4 h-4 animate-spin" />Processing...</>
+                      <><RefreshCw className="w-3.5 h-3.5 animate-sg-spin" />Processing...</>
                     ) : (
-                      <><ExternalLink className="w-4 h-4" />Pay with ISW</>
+                      <><ExternalLink className="w-3.5 h-3.5" />Pay with ISW</>
                     )}
                   </button>
                 ) : (
-                  <div className="flex items-center gap-1.5 text-emerald-400 text-sm">
+                  <div className="flex items-center gap-1.5 text-sg-matched text-[13px] font-mono">
                     <CheckCircle2 className="w-4 h-4" />
-                    Paid
+                    PAID
                   </div>
                 )}
               </div>

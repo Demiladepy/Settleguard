@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { DisputeCard } from "./disputes/DisputeCard";
@@ -38,13 +38,10 @@ export function DisputeInvestigation() {
 
   useEffect(() => {
     fetchDisputes();
-
-    // Realtime
     const channel = supabase
       .channel("disputes-feed")
       .on("postgres_changes", { event: "*", schema: "public", table: "disputes" }, () => fetchDisputes())
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [fetchDisputes]);
 
@@ -74,35 +71,36 @@ export function DisputeInvestigation() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <RefreshCw className="w-6 h-6 animate-spin text-gray-500" />
+        <RefreshCw className="w-5 h-5 animate-sg-spin text-sg-text-tertiary" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">AI Dispute Investigation</h1>
-        <p className="text-gray-400 text-sm mt-1">
-          AI agent investigates discrepancies across all three data sources in real time
+        <h1 className="text-xl font-mono font-bold text-sg-text">AI Dispute Investigation</h1>
+        <p className="text-sg-text-tertiary text-[13px] mt-0.5">
+          AI agent investigates discrepancies across all three data sources
         </p>
       </div>
 
       {/* Create dispute */}
-      <div className="bg-gray-900/50 border border-gray-800/60 rounded-xl p-5">
-        <h2 className="font-semibold mb-3">Create New Dispute</h2>
-        <div className="flex gap-3">
+      <div className="bg-sg-bg-card border border-sg-border rounded-lg p-4">
+        <h2 className="text-sm font-semibold text-sg-text mb-3">Create New Dispute</h2>
+        <div className="flex gap-2">
           <input
             value={newReason}
             onChange={(e) => setNewReason(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && createDispute()}
             placeholder="Describe the discrepancy..."
-            className="flex-1 bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-emerald-600"
+            className="flex-1 bg-sg-bg border border-sg-border rounded-md px-3 py-2 text-[13px] text-sg-text placeholder-sg-text-tertiary focus:outline-none focus:border-sg-accent/50 font-sans"
           />
           <button
             onClick={createDispute}
             disabled={creating || !newReason.trim()}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            className="px-4 py-2 bg-sg-accent/10 border border-sg-accent/30 hover:bg-sg-accent/20 rounded-md text-[13px] font-medium text-sg-accent transition-colors disabled:opacity-50"
           >
             {creating ? "Creating..." : "Create"}
           </button>
@@ -111,15 +109,13 @@ export function DisputeInvestigation() {
 
       {/* Disputes list */}
       {disputes.length === 0 ? (
-        <div className="bg-gray-900/50 border border-gray-800/60 rounded-xl p-8 text-center">
-          <AlertTriangle className="w-8 h-8 text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-400">
-            No disputes yet. Run reconciliation to auto-detect discrepancies, or
-            create one manually.
+        <div className="bg-sg-bg-card border border-sg-border rounded-lg p-8 text-center">
+          <p className="text-sg-text-tertiary text-sm">
+            No disputes yet. Run reconciliation to auto-detect, or create one manually.
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {disputes.map((d) => (
             <DisputeCard key={d.id} dispute={d} onUpdated={fetchDisputes} />
           ))}
