@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, Database } from "lucide-react";
+import { RefreshCw, Database, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { StatsCards } from "./dashboard/StatsCards";
 import { TransactionFeed } from "./dashboard/TransactionFeed";
@@ -10,6 +10,7 @@ import { IntegrityIndicator } from "./audit/IntegrityIndicator";
 export function Dashboard() {
   const [reconciling, setReconciling] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const handleReconcile = async () => {
     setReconciling(true);
@@ -51,6 +52,28 @@ export function Dashboard() {
     setSeeding(false);
   };
 
+  const handleSyncBank = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/sources/sync-bank", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (data.error) {
+        toast.error(data.error);
+      } else if (data.source === "seeded_data") {
+        toast.info(`Bank: ${data.total} seeded transactions. Link account on /demo for live data.`);
+      } else {
+        toast.success(`Synced ${data.synced} bank transactions from Mono`);
+      }
+    } catch {
+      toast.error("Bank sync failed");
+    }
+    setSyncing(false);
+  };
+
   return (
     <div className="space-y-6">
       {/* Command bar */}
@@ -72,6 +95,14 @@ export function Dashboard() {
           >
             <Database className="w-3.5 h-3.5" />
             {seeding ? "Seeding..." : "Seed Data"}
+          </button>
+          <button
+            onClick={handleSyncBank}
+            disabled={syncing}
+            className="px-3 py-1.5 bg-sg-bg-card border border-sg-border hover:border-sg-border-hover rounded-md text-[13px] font-medium text-sg-text-secondary hover:text-sg-text transition-colors disabled:opacity-50 flex items-center gap-1.5"
+          >
+            <Landmark className="w-3.5 h-3.5" />
+            {syncing ? "Syncing..." : "Sync Bank"}
           </button>
           <button
             onClick={handleReconcile}
