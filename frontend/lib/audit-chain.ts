@@ -7,6 +7,15 @@ import { supabaseAdmin, type AuditEntry } from "./supabase";
  * creating a verifiable chain of custody for all operations.
  */
 
+function sortedStringify(obj: unknown): string {
+  if (obj === null || typeof obj !== "object") return JSON.stringify(obj);
+  if (Array.isArray(obj)) return "[" + obj.map(sortedStringify).join(",") + "]";
+  const sorted = Object.keys(obj as Record<string, unknown>)
+    .sort()
+    .map((k) => JSON.stringify(k) + ":" + sortedStringify((obj as Record<string, unknown>)[k]));
+  return "{" + sorted.join(",") + "}";
+}
+
 function computeHash(entry: {
   event_type: string;
   entity_type: string;
@@ -15,7 +24,7 @@ function computeHash(entry: {
   payload: Record<string, unknown>;
   prev_hash: string;
 }): string {
-  const data = JSON.stringify({
+  const data = sortedStringify({
     event_type: entry.event_type,
     entity_type: entry.entity_type,
     entity_id: entry.entity_id,
