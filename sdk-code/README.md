@@ -1,4 +1,11 @@
-## Privacy Cash SDK
+## Privacy Cash SDK — Dependency of SettleGuard
+
+> **Note for reviewers:** This directory contains the source for the `privacycash` npm package,
+> which SettleGuard uses as a dependency for privacy-preserving payment commitments.
+> It is included in this repo for reference — the frontend imports it via `npm` (`"privacycash": "^1.1.11"` in package.json).
+> The SettleGuard reconciliation engine uses its cryptographic commitment scheme
+> to verify transaction integrity across ISW, bank, and ERP sources without exposing raw amounts in shared contexts.
+
 This is the SDK for Privacy Cash. It has been audited by Zigtur (https://x.com/zigtur).
 
 ### Disclaimer

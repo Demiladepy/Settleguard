@@ -81,6 +81,30 @@ export function monoToBankTransaction(mono: MonoTransaction) {
 }
 
 /**
+ * Exchange Mono Connect auth code for an account ID.
+ * Called after the user links their bank via the Mono Connect widget.
+ */
+export async function exchangeMonoCode(code: string): Promise<{ id: string }> {
+  if (!MONO_SECRET) throw new Error("Mono secret key not configured");
+
+  const res = await fetch(`${MONO_BASE_URL}/accounts/auth`, {
+    method: "POST",
+    headers: {
+      "mono-sec-key": MONO_SECRET,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ code }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Mono auth exchange failed: ${res.status} ${err}`);
+  }
+
+  return res.json();
+}
+
+/**
  * Get account identity/details from Mono
  */
 export async function getAccountInfo(accountId: string) {
